@@ -5,6 +5,7 @@ authors = ["Michael Williams"]
 edition = "2021"
 license-file = "LICENSE-MIT.txt"
 description = "Print an image to the terminal!"
+repository = "https://github.com/m1chaelwilliams/print-image"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
