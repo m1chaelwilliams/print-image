@@ -3,7 +3,7 @@ name = "print_image"
 version = "0.1.0"
 authors = ["Michael Williams"]
 edition = "2021"
-license = "None"
+license-file = "LICENSE-MIT.txt"
 description = "Print an image to the terminal!"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

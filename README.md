@@ -48,4 +48,4 @@ fn main() -> Result<(), print_image::PrintImageError> {
 99.99% of the legwork was done by the dependencies for this project. Print Image only provides an easy to use wrapper over them.
 
 # License
-There is no license for this code. You can do whatever you want with it. However, if you find a bug, it would be awesome if you let me know!
+Code is licensed under MIT. Click [here](LICENSE-MIT.txt) for more information.
