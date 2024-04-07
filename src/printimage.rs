@@ -1,138 +1,128 @@
+// PrintImage is a convenience small library for printing an image in the terminal
+// 
+// As of writing this (04.06.2024), there is no copyright associated with this code.
+// I do not plan on copyrighting it ever. Have fun!
+
+//! # Print Image
+//! 
+//! Print an image to the terminal!
+
 use std::path::Path;
-use image::{self, DynamicImage, GenericImageView};
+use image::{self, GenericImageView, Rgba};
 use colored::{self, Colorize};
-use std::ops::Range;
-use crate::rgb::RGB;
+use image::imageops::FilterType;
 
-// struct used *only* for calculating averages
-// NOT a valid RGB value. It can be outside of 0-255
-#[derive (Default)]
-struct RGB64(u64, u64, u64);
-
+/// Error enum for handling image loading errors
+/// 
+/// # Example
+/// 
+/// ```rust
+/// let _ = match print_img(path, None, handle_pixel_rgb) {
+/// 	Ok(val) => val,
+/// 	Err(e) => return Err(e);
+/// }
+/// ```
 #[derive (Debug)]
-pub enum ImageCacheError {
-	ScaleInvalid(String),
-	MismatchedSize(String),
+pub enum PrintImageError {
+	/// Wrapper over `image::ImageError` from the [image](https://github.com/image-rs/image) crate.
 	ImageLoadError(image::ImageError)
 }
 
-fn img_load(path: &Path) -> Result<image::DynamicImage, ImageCacheError> {
+/// *Private Function*: Helper function for loading images
+/// 
+/// # Example
+/// 
+/// ```rust
+/// let img = img_load(path)?;
+/// ```
+fn img_load(path: &Path) -> Result<image::DynamicImage, PrintImageError> {
 	match image::open(path) {
 		Ok(result) => Ok(result),
-		Err(e) => Err(ImageCacheError::ImageLoadError(e))
+		Err(e) => Err(PrintImageError::ImageLoadError(e))
 	}
 }
 
-fn calc_avg_color(img: &DynamicImage, w_range: Range<u32>, h_range: Range<u32>) -> RGB {
-	let mut result: RGB = RGB::default();
-	let mut num_pixels = 0;
+/// A `handle_pixel` function that returns a colored block to the screen
+/// 
+/// # Usage
+/// 
+/// ```rust
+/// let _ = print_img(path, None, handle_pixel_rgb);
+/// ```
+pub fn handle_pixel_rgb(pixel: Rgba<u8>) -> String {
+	let color = colored::Color::TrueColor {
+		r: pixel[0],
+		g: pixel[1],
+		b: pixel[2]
+	};
+	
+	format!("{}", "██".color(color))
+}
 
-	let mut average = RGB64::default();
+/// A `handle_pixel` function that returns a colored block to the screen
+/// 
+/// # Usage
+/// 
+/// ```rust
+/// let _ = print_img(path, None, handle_pixel_ascii);
+/// ```
+pub fn handle_pixel_ascii(pixel: Rgba<u8>) -> String {
+	let sum: u32 = pixel[0] as u32 + pixel[1] as u32 + pixel[1] as u32;
 
-	for x in w_range.clone() {
-		for y in h_range.clone() {
-			let pixel = img.get_pixel(x, y);
+	let character = match sum {
+		0..=85 => " ",
+		86..=170 => ":",
+		171..=255 => ";",
+		256..=340 => "=",
+		341..=425 => "*",
+		426..=510 => "#",
+		511..=595 => "@",
+		596..=680 => "&",
+		681..=765 => "%",
+		_ => ""
+	};
 
-			average.0 += pixel[0] as u64;
-			average.1 += pixel[1] as u64;
-			average.2 += pixel[2] as u64;
-			
-			num_pixels += 1;
-		}
-	}
-
-	result.r = (average.0 / num_pixels) as u8;
-	result.g = (average.1 / num_pixels) as u8;
-	result.b = (average.2 / num_pixels) as u8;
+	let result = format!("{:width$}", character, width = 1);
 
 	result
 }
 
-// caches scaled image data as a Vec<Vec<RGB>>.
-// Does NOT store original data. If scale factor is < 1, data will be lost.
-pub struct ImageCache {
-	pub pixels: Vec<Vec<RGB>>,
-}
-
-impl ImageCache {
-	pub fn height(&self) -> usize {
-		self.pixels.len()
+/// Prints the image to the screen at `size` or default of `None`
+/// Uses `handle_pixel` closure for custom pixel handling (with useful defaults)
+/// 
+/// ### Default Pixel Handlers:
+/// - `handle_pixel_rgb`
+/// - `handle_pixel_ascii`
+/// 
+/// # Usage
+/// 
+/// ```rust
+/// let _ = print_img(path, Some((width, height)), |pixel| {
+/// 	if pixel[0] > 128 {
+/// 		return "-".to_string();
+/// 	}
+/// 	"+".to_string()
+/// })
+/// ```
+pub fn print_img<F>(path: &Path, size: Option<(u32, u32)>, handle_pixel: F) -> Result<(), PrintImageError> 
+where
+	F: Fn(image::Rgba<u8>) -> String
+{
+	let mut img = img_load(path)?;
+	
+	if let Some(size) = size {
+		img = img.resize(size.0, size.1, FilterType::CatmullRom);
 	}
 
-	pub fn width(&self) -> usize {
-		if self.height() > 0 {
-			return self.pixels[0].len();
-		}
-		0
-	}
+	let (w, h) = img.dimensions();
 
-	pub fn from_image_scaled(img: &DynamicImage, scale: (f32, f32)) -> Result<Self, ImageCacheError> {
-		if scale.0 <= 0.0 || scale.1 <= 0.0 {
-			return Err(ImageCacheError::ScaleInvalid("Scale must be positive".into()));
-		}
-
-		let (width, height) = img.dimensions();
-
-		let mut pixels: Vec<Vec<RGB>> = Vec::new();
-
-		let w_step = width / (width as f32 * scale.0) as u32;
-		let h_step = width / (height as f32 * scale.1) as u32;
-		
-		for y in (0..height).step_by(h_step as usize) {
-			let mut row: Vec<RGB> = Vec::new();
-			for x in (0..width).step_by(w_step as usize) {
-				let avg_color = calc_avg_color(&img, x..x+w_step, y..y+h_step);
-				row.push(avg_color);
-			}
-			pixels.push(row);
-		}
-
-		Ok(Self {
-			pixels
-		})
-	}
-
-	pub fn create_scaled(path: &Path, scale: (f32, f32)) -> Result<Self, ImageCacheError> {
-		let img = img_load(path)?;
-
-		Self::from_image_scaled(&img, scale)
-	}
-
-	pub fn create(path: &Path) -> Result<Self, ImageCacheError> {
-		let img = img_load(path)?;
-
-		let mut pixels = Vec::new();
-
-		let (width, height) = img.dimensions();
-
-		for y in 0..height {
-			let mut row = Vec::new();
-			for x in 0..width {
-				let pixel = img.get_pixel(x, y);
-				let color = RGB::new(pixel[0], pixel[1], pixel[2]);
-
-				row.push(color);
-			}
-			pixels.push(row);
-		}
-
-		Ok(Self {
-			pixels
-		})
-	}
-}
-
-pub fn print_img(img_cache: &ImageCache) {
-	for row in img_cache.pixels.iter() {
-		for pixel in row.iter() {
-			let color = colored::Color::TrueColor {
-				r: pixel.r,
-				g: pixel.g,
-				b: pixel.b,
-			};
-
-			print!("{}", "█".color(color));
+	for y in 0..h {
+		for x in 0..w {
+			let pixel = img.get_pixel(x, y);
+			print!("{}", handle_pixel(pixel));
 		}
 		println!();
 	}
+	
+	Ok(())
 }
